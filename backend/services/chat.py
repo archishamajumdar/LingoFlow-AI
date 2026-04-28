@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class AIChatEngine:
-    async def generate_response(self, session_id: str, message: str, mode: str = "auto") -> dict:
+    async def generate_response(self, session_id: str, message: str) -> dict:
         # Add user message to memory
         session_memory.add_message(session_id, "user", message)
         history = session_memory.get_history(session_id)
@@ -17,40 +17,35 @@ class AIChatEngine:
         mode_used = "online"
         ai_response = ""
         
-        if mode == "offline":
-            ai_response, mode_used = await self._try_ollama(history, message)
+        # Try Online
+        if settings.OPENAI_API_KEY:
+            try:
+                import openai
+                openai.api_key = settings.OPENAI_API_KEY
+                from openai import AsyncOpenAI
+                client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+                response = await client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=history
+                )
+                ai_response = response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"OpenAI failed: {e}")
+                ai_response = "I'm sorry, I'm having trouble connecting to my brain right now."
         else:
-            # Try Online
-            if settings.OPENAI_API_KEY:
-                try:
-                    import openai
-                    openai.api_key = settings.OPENAI_API_KEY
-                    from openai import AsyncOpenAI
-                    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-                    response = await client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=history
-                    )
-                    ai_response = response.choices[0].message.content
-                    mode_used = "online"
-                except Exception as e:
-                    logger.error(f"OpenAI failed: {e}")
-                    ai_response, mode_used = await self._try_ollama(history, message)
-            else:
-                # Try g4f free online LLM
-                try:
-                    import g4f
-                    from g4f.client import AsyncClient
-                    client = AsyncClient()
-                    response = await client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=history,
-                    )
-                    ai_response = response.choices[0].message.content
-                    mode_used = "online"
-                except Exception as e:
-                    logger.error(f"g4f failed: {e}")
-                    ai_response, mode_used = await self._try_ollama(history, message)
+            # Try g4f free online LLM
+            try:
+                import g4f
+                from g4f.client import AsyncClient
+                client = AsyncClient(provider=g4f.Provider.PollinationsAI)
+                response = await client.chat.completions.create(
+                    model="openai",
+                    messages=history,
+                )
+                ai_response = response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"g4f failed: {e}")
+                ai_response = "I'm sorry, I'm having trouble connecting to my brain right now."
 
         # Add AI response to memory
         session_memory.add_message(session_id, "assistant", ai_response)

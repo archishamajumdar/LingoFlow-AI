@@ -5,7 +5,6 @@ class TranslationRequest(BaseModel):
     text: str
     source_lang: Optional[str] = "auto"
     target_lang: str
-    mode: Optional[str] = "auto" # online, offline, auto
 
 class TranslationResponse(BaseModel):
     original_text: str
@@ -20,7 +19,6 @@ class ChatMessage(BaseModel):
     text: str
     session_id: str
     target_lang: str
-    mode: Optional[str] = "auto"
 
 class ChatResponse(BaseModel):
     user_original: str

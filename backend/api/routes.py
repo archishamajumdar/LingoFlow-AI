@@ -21,7 +21,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 @router.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "LingoFlow AI Advanced Backend"}
+    return {"status": "ok", "service": "Neural Translate Advanced Backend"}
 
 @router.post("/detect-language", response_model=LanguageDetectionResponse)
 async def detect_language(request: LanguageDetectionRequest):
@@ -31,7 +31,7 @@ async def detect_language(request: LanguageDetectionRequest):
 
 @router.post("/translate", response_model=TranslationResponse)
 async def translate_text(request: TranslationRequest):
-    cache_key = f"trans_{request.text}_{request.source_lang}_{request.target_lang}_{request.mode}"
+    cache_key = f"trans_{request.text}_{request.source_lang}_{request.target_lang}"
     cached = await cache_manager.get(cache_key)
     if cached:
         return TranslationResponse(**cached)
@@ -40,8 +40,7 @@ async def translate_text(request: TranslationRequest):
         result = await translation_service.translate(
             text=request.text,
             target_lang=request.target_lang,
-            source_lang=request.source_lang,
-            mode=request.mode
+            source_lang=request.source_lang
         )
         
         await cache_manager.set(cache_key, result)
@@ -56,8 +55,7 @@ async def chat(request: ChatMessage):
         user_translation = await translation_service.translate(
             text=request.text,
             target_lang="en",
-            source_lang="auto",
-            mode=request.mode
+            source_lang="auto"
         )
         
         user_english_text = user_translation["translated_text"]
@@ -66,18 +64,18 @@ async def chat(request: ChatMessage):
         # Pipeline Step 2: Send to AI Chat Engine
         ai_result = await chat_engine.generate_response(
             session_id=request.session_id,
-            message=user_english_text,
-            mode=request.mode
+            message=user_english_text
         )
         
         ai_english_text = ai_result["response"]
         
-        # Pipeline Step 3: Translate AI Response back to User's target language
+        # Pipeline Step 3: Translate AI Response back to User's target language (or the language they spoke in)
+        reply_lang = user_source_lang if user_source_lang and user_source_lang != "unknown" else request.target_lang
+        
         ai_translation = await translation_service.translate(
             text=ai_english_text,
-            target_lang=request.target_lang,
-            source_lang="en",
-            mode=request.mode
+            target_lang=reply_lang,
+            source_lang="en"
         )
         
         return ChatResponse(
@@ -100,12 +98,9 @@ async def websocket_chat(websocket: WebSocket):
             data = await websocket.receive_json()
             text = data.get("text")
             target_lang = data.get("target_lang", "en")
-            mode = data.get("mode", "auto")
-            
             ai_result = await chat_engine.generate_response(
                 session_id=session_id,
-                message=text,
-                mode=mode
+                message=text
             )
             
             await websocket.send_json({
@@ -115,7 +110,7 @@ async def websocket_chat(websocket: WebSocket):
     except Exception as e:
         print(f"WebSocket Error: {e}")
 
-@router.post("/text-to-speech")
+@router.post("/tts")
 async def text_to_speech(text: str, lang: str):
     try:
         tts = gTTS(text=text, lang=lang)
@@ -125,6 +120,11 @@ async def text_to_speech(text: str, lang: str):
         return FileResponse(filepath, media_type="audio/mpeg", filename=filename)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/history")
+async def get_history():
+    # Return empty list for now as a placeholder
+    return []
 
 @router.post("/speech-to-text")
 async def speech_to_text(file: UploadFile = File(...)):
